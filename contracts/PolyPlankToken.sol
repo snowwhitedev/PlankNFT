@@ -20,41 +20,38 @@ contract PolyPlankToken is ERC721URIStorage, Ownable, ReentrancyGuard {
     uint256 public constant MaxPlanks = 100;
 
     uint256 private _buyingPrice = 25 ether;
-    uint256 internal _nonce = 0;
     address payable private _devWallet;
 
     uint256 public SalesRemaining;
 
     uint256[] public AvailablePlanks;
 
-    mapping(address => Promoter) promoterClaims;
+    mapping(address => Promoter) private promoterClaims;
+    mapping(address => uint256) private nonce;
 
     modifier onlyPromoter() {
         require(promoterClaims[msg.sender].isApproved, "Only promoter.");
         _;
     }
 
-    constructor(address payable devWallet, uint256 nonce) ERC721("PolyPlank GEN1", "POLYPLANKG1") {
-        _nonce = nonce;
+    constructor(address payable devWallet) ERC721("PolyPlank GEN1", "POLYPLANKG1") {
         _devWallet = devWallet;
     }
 
     function removeAvailablePlank(uint256 indexToRemove) internal {
+        SalesRemaining--;
         for (uint256 i = indexToRemove; i < AvailablePlanks.length - 1; i++) {
             AvailablePlanks[i] = AvailablePlanks[i + 1];
         }
-
-        SalesRemaining--;
-
         AvailablePlanks.pop();
     }
 
-    function setNonce(uint256 newNonce) external onlyOwner {
-        _nonce = newNonce;
-    }
-
-    function randomIndex() internal view returns (uint256) {
-        uint256 index = uint256(keccak256(abi.encodePacked(_nonce, msg.sender, block.difficulty, block.timestamp))) %
+    /**
+     * @dev it is Okay, here we have block.difficulty to strength randomness
+     */
+    function randomIndex() internal returns (uint256) {
+        nonce[msg.sender]++;
+        uint256 index = uint256(keccak256(abi.encodePacked(nonce[msg.sender], msg.sender, block.difficulty))) %
             AvailablePlanks.length;
         return index + 1;
     }
@@ -67,9 +64,7 @@ contract PolyPlankToken is ERC721URIStorage, Ownable, ReentrancyGuard {
         uint256 newItemId = _tokenIds.current();
         _mint(address(this), newItemId);
         _setTokenURI(newItemId, tokenURI);
-
         AvailablePlanks.push(newItemId);
-
         SalesRemaining++;
 
         return newItemId;
@@ -82,13 +77,9 @@ contract PolyPlankToken is ERC721URIStorage, Ownable, ReentrancyGuard {
     function claimPromoter() external nonReentrant onlyPromoter {
         require(1 <= SalesRemaining, "There aren't enough left to buy that many");
         require(!promoterClaims[msg.sender].isClaimed, "You have already claimed your Plank");
-
         uint256 indexOfSale = randomIndex();
-
         removeAvailablePlank(indexOfSale);
-
         promoterClaims[msg.sender].isClaimed = true;
-
         _safeTransfer(address(this), msg.sender, indexOfSale, "");
     }
 
@@ -101,9 +92,7 @@ contract PolyPlankToken is ERC721URIStorage, Ownable, ReentrancyGuard {
 
         for (uint256 index = 0; index < quantity; index++) {
             uint256 indexOfSale = randomIndex();
-
             removeAvailablePlank(indexOfSale);
-
             _safeTransfer(address(this), msg.sender, indexOfSale, "");
         }
     }
